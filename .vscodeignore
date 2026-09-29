@@ -1,8 +1,8 @@
 .repair-backup-built-in/**
 inject.js
 media/boot.js
+media/_verify*
 extension.js
-chat.js
 tools/**
 *.vsix
 .git/**

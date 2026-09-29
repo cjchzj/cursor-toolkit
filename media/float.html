@@ -6,60 +6,110 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>工作台</title>
   <link rel="icon" href="/toolkit.ico?token=__TOKEN__" sizes="256x256" />
-  <link rel="stylesheet" href="/float.css?token=__TOKEN__" />
+  <link rel="stylesheet" href="/float.css?token=__TOKEN__&v=13" />
 </head>
 <body>
   <header id="bar">
     <strong>工作台</strong>
     <span class="spacer"></span>
-    <button id="refresh-usage" type="button" title="刷新额度">刷新</button>
-    <button id="pin" type="button" title="在其他窗口之上打开">置顶</button>
-    <button id="close" type="button" title="关闭">关闭</button>
-  </header>
-  <section id="usage" aria-label="模型额度">
-    <div class="usage-title">
-      <strong>本期额度</strong>
-      <span id="usage-plan" class="muted"></span>
+    <div id="win-controls" class="win-controls">
+      <button type="button" id="win-min" class="win-btn" title="最小化" aria-label="最小化">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.2 6.1 H9.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" id="win-max" class="win-btn" title="全屏" aria-label="全屏">
+        <svg viewBox="0 0 12 12" aria-hidden="true">
+          <rect class="win-max-box" x="2.4" y="2.4" width="7.2" height="7.2" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <path class="win-restore-box" d="M3.6 4.5 H8.2 V9 H3.6 Z M4.5 4.5 V3.4 H9.3 V8.2 H8.2" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        </svg>
+      </button>
+      <button type="button" id="win-close" class="win-btn win-close" title="关闭" aria-label="关闭">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.2 3.2 L8.8 8.8 M8.8 3.2 L3.2 8.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
     </div>
-    <div class="usage-row">
-      <span>Grok / Composer</span>
+  </header>
+
+  <section id="usage" aria-label="模型额度">
+    <div class="usage-line">
+      <span>Grok</span>
       <div class="usage-track"><i id="usage-grok"></i></div>
       <b id="usage-grok-text">—</b>
     </div>
-    <div class="usage-row">
-      <span>其他模型</span>
+    <div class="usage-line">
+      <span>其他</span>
       <div class="usage-track"><i id="usage-other"></i></div>
       <b id="usage-other-text">—</b>
     </div>
     <div id="usage-meta" class="usage-meta">正在读取额度…</div>
   </section>
-  <details id="library">
-    <summary>插件和技能</summary>
-    <input id="library-search" type="search" placeholder="搜索插件或技能" />
-    <div id="library-note" class="hint"></div>
-    <div id="library-list"></div>
-  </details>
-  <div id="log"></div>
-  <div id="pending"></div>
-  <form id="composer">
-    <textarea id="input" rows="2" placeholder="问点什么，Enter 发送"></textarea>
-    <div class="tools">
-      <button type="button" id="shot" class="ghost">截图</button>
-      <button type="button" id="file" class="ghost">文件</button>
-      <select id="model" hidden></select>
-      <span class="spacer"></span>
-      <button type="button" id="stop" class="ghost" hidden>停止</button>
-      <button type="submit" id="send">发送</button>
+
+  <div id="shell">
+    <nav id="rail" aria-label="工作台导航">
+      <button type="button" id="chat-new" class="rail-btn" title="新建对话" aria-label="新建对话">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3 V13 M3 8 H13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" id="chat-pick" class="rail-btn" title="选择对话" aria-label="选择对话">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.2 H13 M3 8 H13 M3 11.8 H10.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" id="rail-skills" class="rail-btn" title="技能" aria-label="技能">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.6 L9.6 6.2 L13.5 6.6 L10.6 9.2 L11.4 13 L8 11.1 L4.6 13 L5.4 9.2 L2.5 6.6 L6.4 6.2 Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      </button>
+      <button type="button" id="rail-plugins" class="rail-btn" title="插件" aria-label="插件">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.6" y="2.6" width="4.4" height="4.4" rx="1.1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="2.6" width="4.4" height="4.4" rx="1.1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="2.6" y="9" width="4.4" height="4.4" rx="1.1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="4.4" height="4.4" rx="1.1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      </button>
+    </nav>
+
+    <main id="stage">
+      <div id="log"></div>
+      <div id="pending"></div>
+      <form id="composer">
+        <textarea id="input" rows="2" placeholder="问点什么，Enter 发送"></textarea>
+        <div class="tools">
+          <button type="button" id="shot" class="ghost">截图</button>
+          <button type="button" id="file" class="ghost">文件</button>
+          <select id="model" hidden></select>
+          <span class="spacer"></span>
+          <button type="button" id="stop" class="ghost" hidden>停止</button>
+          <button type="submit" id="send">发送</button>
+        </div>
+      </form>
+      <footer id="foot">
+        <div class="token-wrap" title="当前上下文用量">
+          <div class="token-track"><i id="token-fill"></i></div>
+          <span id="token-label">0 / 256k</span>
+        </div>
+        <button type="button" id="settings-btn" class="rail-btn foot-gear" title="设置" aria-label="设置">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 2.4 H9.8 L10.4 4.4 L12.4 5.2 L14 7.2 L12.6 9.1 L12.8 11.3 L10.8 12.2 L9.8 13.6 H6.2 L5.2 12.2 L3.2 11.3 L3.4 9.1 L2 7.2 L3.6 5.2 L5.6 4.4 Z M8 6.2 A1.8 1.8 0 1 1 8 9.8 A1.8 1.8 0 1 1 8 6.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </button>
+      </footer>
+    </main>
+  </div>
+
+  <div id="sheet" hidden>
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <strong id="sheet-title">对话</strong>
+        <button type="button" id="sheet-close" class="ghost">完成</button>
+      </div>
+      <p id="chat-mode" class="chat-mode"></p>
+      <div id="sheet-chats" class="sheet-body" hidden>
+        <select id="chat-select" aria-label="选择已有对话"></select>
+        <div id="chat-list"></div>
+      </div>
+      <div id="sheet-library" class="sheet-body" hidden>
+        <input id="library-search" type="search" placeholder="搜索" />
+        <div id="library-note" class="hint"></div>
+        <div id="library-list"></div>
+      </div>
+      <div id="sheet-keys" class="sheet-body" hidden>
+        <label class="key-field"><span>截图</span><input id="key-region" spellcheck="false" autocomplete="off" /></label>
+        <label class="key-field"><span>悬浮窗</span><input id="key-float" spellcheck="false" autocomplete="off" /></label>
+        <button type="button" id="save-keys">保存快捷键</button>
+        <p class="hint">默认 Alt+9 截图、Alt+8 工作台。全局快捷键需要修饰键。</p>
+      </div>
     </div>
-  </form>
-  <details id="keys">
-    <summary>快捷键</summary>
-    <label>截图<input id="key-region" spellcheck="false" autocomplete="off" /></label>
-    <label>悬浮窗<input id="key-float" spellcheck="false" autocomplete="off" /></label>
-    <button type="button" id="save-keys">保存快捷键</button>
-    <p class="hint">截图快捷键是 Alt+9。选区完成后，可复制、保存，或滚动截取长图。全局快捷键至少带一个修饰键，例如 ctrl+alt+a。</p>
-  </details>
+  </div>
+
   <input id="picker" type="file" multiple hidden />
-  <script src="/float.js?token=__TOKEN__"></script>
+  <script src="/float.js?token=__TOKEN__&v=13"></script>
 </body>
 </html>

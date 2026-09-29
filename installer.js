@@ -14,6 +14,7 @@ const runtimeFiles = [
   'usage.js',
   'auth.js',
   'catalog.js',
+  'composers.js',
   'host.js',
   'native/Host.cs',
   'media/float.html',
@@ -33,8 +34,8 @@ async function ensureCompanion(sourceRoot, version, log) {
   if (!node) throw new Error('没有找到 Node.js，无法启动工作台助手');
   writeStartup(node);
   launch(node);
-  const ready = await waitReady(version, 12000);
-  if (!ready) throw new Error('工作台助手没有在 12 秒内启动');
+  const ready = await waitReady(version, 20000);
+  if (!ready) throw new Error('工作台助手没有在 20 秒内启动');
   report(`独立助手已运行：${ready.port}`);
   return ready;
 }

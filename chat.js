@@ -28,32 +28,42 @@ function rank(model) {
   return 2;
 }
 
-async function sendChat(vscode, { modelId, prompt, images, token, onDelta }) {
+async function sendChat(vscode, { modelId, prompt, images, history, token, onDelta }) {
   if (!vscode.lm?.selectChatModels) return { ok: false, reason: 'no-model' };
   const models = await vscode.lm.selectChatModels();
   if (!models.length) return { ok: false, reason: 'no-model' };
   const ranked = [...models].sort((a, b) => rank(a) - rank(b));
   const model = models.find((item) => item.id === modelId) || ranked[0];
+  const messages = [];
+  for (const item of (history || []).slice(-12)) {
+    const text = String(item.text || '').trim();
+    if (!text) continue;
+    if (item.role === 'assistant' && vscode.LanguageModelChatMessage.Assistant) {
+      messages.push(vscode.LanguageModelChatMessage.Assistant(text));
+    } else {
+      messages.push(vscode.LanguageModelChatMessage.User(text));
+    }
+  }
   const parts = [];
   if (vscode.LanguageModelTextPart) parts.push(new vscode.LanguageModelTextPart(prompt));
-  for (const image of images) {
+  for (const image of images || []) {
     if (vscode.LanguageModelDataPart?.image) {
       parts.push(vscode.LanguageModelDataPart.image(image.bytes, image.mime));
     }
   }
   const content = parts.length ? parts : prompt;
-  const messages = [vscode.LanguageModelChatMessage.User(content)];
+  messages.push(vscode.LanguageModelChatMessage.User(content));
   const source = new vscode.CancellationTokenSource();
   const abort = () => source.cancel();
   token?.addEventListener?.('abort', abort);
   try {
     const response = await model.sendRequest(messages, {
-      justification: '在工作台悬浮窗里继续这段对话',
+      justification: '在工作台悬浮窗里继续 Cursor 对话',
     }, source.token);
     let text = '';
     for await (const delta of response.text) {
       text += delta;
-      onDelta(delta);
+      onDelta?.(delta);
     }
     return { ok: true, text, model: model.name || model.id };
   } finally {

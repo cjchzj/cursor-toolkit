@@ -9,8 +9,14 @@
   const sendButton = document.getElementById('send');
   const stopButton = document.getElementById('stop');
   const modelSelect = document.getElementById('model');
-  const pinButton = document.getElementById('pin');
-  const closeButton = document.getElementById('close');
+  const chatSelect = document.getElementById('chat-select');
+  const chatMode = document.getElementById('chat-mode');
+  const sheet = document.getElementById('sheet');
+  const sheetTitle = document.getElementById('sheet-title');
+  const sheetChats = document.getElementById('sheet-chats');
+  const sheetLibrary = document.getElementById('sheet-library');
+  const sheetKeys = document.getElementById('sheet-keys');
+  const chatList = document.getElementById('chat-list');
   let since = -1;
   let historyVersion = -1;
   let streaming = false;
@@ -18,43 +24,66 @@
   let attachmentKey = '';
   let attachments = [];
   let modelKey = '';
+  let chatsKey = '';
+  let libraryKind = 'skills';
   let library = { plugins: [], skills: [], note: '' };
   if (EMBED) document.body.classList.add('embed');
   else if (PANEL) {
     document.body.classList.add('panel');
-    closeButton.hidden = true;
   } else {
     document.body.classList.add('float');
-    pinButton.hidden = true;
   }
 
   document.getElementById('bar').addEventListener('pointerdown', (event) => {
-    if (!EMBED || event.target.closest('button')) return;
-    const bar = event.currentTarget;
-    bar.setPointerCapture(event.pointerId);
-    parent.postMessage({ source: 'ctk', type: 'dragstart', sx: event.screenX, sy: event.screenY }, '*');
-    function move(next) {
-      parent.postMessage({ source: 'ctk', type: 'drag', sx: next.screenX, sy: next.screenY }, '*');
+    if (event.target.closest('button')) return;
+    if (EMBED) {
+      const bar = event.currentTarget;
+      bar.setPointerCapture(event.pointerId);
+      parent.postMessage({ source: 'ctk', type: 'dragstart', sx: event.screenX, sy: event.screenY }, '*');
+      function move(next) {
+        parent.postMessage({ source: 'ctk', type: 'drag', sx: next.screenX, sy: next.screenY }, '*');
+      }
+      function up() {
+        bar.removeEventListener('pointermove', move);
+        bar.removeEventListener('pointerup', up);
+        parent.postMessage({ source: 'ctk', type: 'dragend' }, '*');
+      }
+      bar.addEventListener('pointermove', move);
+      bar.addEventListener('pointerup', up);
+      return;
     }
-    function up() {
-      bar.removeEventListener('pointermove', move);
-      bar.removeEventListener('pointerup', up);
-      parent.postMessage({ source: 'ctk', type: 'dragend' }, '*');
-    }
-    bar.addEventListener('pointermove', move);
-    bar.addEventListener('pointerup', up);
+    if (!PANEL) postJson('/api/window', { action: 'drag' }).catch(() => {});
   });
 
-  closeButton.addEventListener('click', () => {
-    if (EMBED) postJson('/api/float', { open: false });
-    else postJson('/api/pin', {});
+  document.getElementById('win-min').addEventListener('click', () => postJson('/api/window', { action: 'min' }));
+  document.getElementById('win-max').addEventListener('click', async () => {
+    const result = await postJson('/api/window', { action: 'max' }).catch(() => ({}));
+    document.getElementById('win-max').classList.toggle('restored', Boolean(result.maximized));
   });
-  pinButton.addEventListener('click', () => postJson('/api/pin', {}));
+  document.getElementById('win-close').addEventListener('click', () => postJson('/api/window', { action: 'close' }));
+  document.getElementById('chat-new').addEventListener('click', () => {
+    closeSheet();
+    changeChat('new');
+  });
+  document.getElementById('chat-pick').addEventListener('click', () => openSheet('chats'));
+  document.getElementById('rail-skills').addEventListener('click', () => openSheet('library', 'skills'));
+  document.getElementById('rail-plugins').addEventListener('click', () => openSheet('library', 'plugins'));
+  document.getElementById('settings-btn').addEventListener('click', () => openSheet('keys'));
+  document.getElementById('sheet-close').addEventListener('click', closeSheet);
+  sheet.addEventListener('click', (event) => {
+    if (event.target === sheet) closeSheet();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !sheet.hidden) {
+      event.preventDefault();
+      closeSheet();
+    }
+  });
+  chatSelect.addEventListener('change', () => changeChat('select', chatSelect.value));
   document.getElementById('shot').addEventListener('click', () => shot());
   document.getElementById('file').addEventListener('click', () => document.getElementById('picker').click());
   document.getElementById('picker').addEventListener('change', uploadPicked);
   document.getElementById('save-keys').addEventListener('click', saveKeys);
-  document.getElementById('refresh-usage').addEventListener('click', refreshUsage);
   document.getElementById('library-search').addEventListener('input', renderLibrary);
   stopButton.addEventListener('click', () => abort?.abort());
   document.getElementById('composer').addEventListener('submit', (event) => {
@@ -104,9 +133,120 @@
       setKey('key-float', data.shortcuts.float);
     }
     syncAttachments(data.attachments || []);
+    if (data.chats) {
+      fillChats(data.chats);
+      const fill = document.getElementById('token-fill');
+      if (Number(data.chats.tokensUsed) > 0) {
+        fill.dataset.lock = '1';
+        renderTokenBar(data.chats.tokensUsed, data.chats.tokenLimit);
+      } else {
+        fill.dataset.lock = '0';
+      }
+    }
     if (!streaming && data.historyVersion !== historyVersion) {
       historyVersion = data.historyVersion;
       loadHistory();
+    }
+  }
+
+  function fillChats(chats) {
+    const list = Array.isArray(chats.list) ? chats.list : [];
+    const key = `${chats.currentId || ''}|${list.map((item) => `${item.id}:${item.origin}:${item.title}:${item.fresh ? 1 : 0}`).join(',')}`;
+    if (key === chatsKey) {
+      updateChatMode(chats);
+      return;
+    }
+    chatsKey = key;
+    const current = chats.currentId || '';
+    chatSelect.replaceChildren();
+    chatList.replaceChildren();
+    if (!list.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = '还没有对话';
+      chatSelect.append(option);
+      const empty = document.createElement('div');
+      empty.className = 'hint';
+      empty.textContent = '没有读到 Cursor 对话。打开 Cursor 后再试，或点左侧 + 新建工作台会话。';
+      chatList.append(empty);
+    }
+    let lastOrigin = '';
+    for (const item of list) {
+      if (item.origin !== lastOrigin) {
+        lastOrigin = item.origin || 'local';
+        const heading = document.createElement('div');
+        heading.className = 'library-heading';
+        heading.textContent = lastOrigin === 'cursor' ? 'Cursor 对话' : '工作台';
+        chatList.append(heading);
+      }
+      const option = document.createElement('option');
+      option.value = item.id;
+      option.textContent = item.title || '未命名对话';
+      chatSelect.append(option);
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = `chat-item${item.id === current ? ' active' : ''}`;
+      row.textContent = item.title || '未命名对话';
+      if (item.mode) {
+        const mark = document.createElement('small');
+        mark.textContent = item.origin === 'cursor' ? (item.mode === 'chat' ? 'Chat' : 'Agent') : '本地';
+        row.append(mark);
+      }
+      row.addEventListener('click', () => {
+        changeChat('select', item.id);
+        closeSheet();
+      });
+      chatList.append(row);
+    }
+    if ([...chatSelect.options].some((option) => option.value === current)) chatSelect.value = current;
+    updateChatMode(chats);
+  }
+
+  function openSheet(kind, nextKind) {
+    libraryKind = nextKind || libraryKind;
+    sheet.hidden = false;
+    sheetChats.hidden = kind !== 'chats';
+    sheetLibrary.hidden = kind !== 'library';
+    sheetKeys.hidden = kind !== 'keys';
+    sheetTitle.textContent = kind === 'chats' ? '选择对话' : kind === 'library' ? (libraryKind === 'plugins' ? '插件' : '技能') : '设置';
+    chatMode.hidden = kind !== 'chats';
+    document.getElementById('chat-pick').classList.toggle('active', kind === 'chats');
+    document.getElementById('rail-skills').classList.toggle('active', kind === 'library' && libraryKind === 'skills');
+    document.getElementById('rail-plugins').classList.toggle('active', kind === 'library' && libraryKind === 'plugins');
+    document.getElementById('settings-btn').classList.toggle('active', kind === 'keys');
+    if (kind === 'library') renderLibrary();
+  }
+
+  function closeSheet() {
+    sheet.hidden = true;
+    document.getElementById('chat-pick').classList.remove('active');
+    document.getElementById('rail-skills').classList.remove('active');
+    document.getElementById('rail-plugins').classList.remove('active');
+    document.getElementById('settings-btn').classList.remove('active');
+  }
+
+  function updateChatMode(chats) {
+    const current = (chats.list || []).find((item) => item.id === chats.currentId);
+    if (!current) {
+      chatMode.textContent = '当前：尚未选择对话。';
+      return;
+    }
+    if (current.origin === 'cursor') {
+      chatMode.textContent = `当前：Cursor ${current.mode === 'chat' ? 'Chat' : 'Agent'}「${current.title}」`;
+      return;
+    }
+    if (current.fresh) chatMode.textContent = '当前：工作台本地会话（还没有消息）';
+    else chatMode.textContent = `当前：工作台「${current.title}」`;
+  }
+
+  async function changeChat(action, id) {
+    try {
+      const result = await postJson('/api/chats', { action, id });
+      if (result.chats) fillChats(result.chats);
+      historyVersion = -1;
+      await loadHistory();
+    } catch (error) {
+      chatMode.textContent = error.message || '切换对话失败';
     }
   }
 
@@ -114,10 +254,10 @@
     const list = document.getElementById('library-list');
     const note = document.getElementById('library-note');
     const query = document.getElementById('library-search').value.trim().toLowerCase();
-    note.textContent = library.note || '技能在下一次对话生效；插件切换需重启 Cursor。';
+    note.textContent = library.note || (libraryKind === 'plugins' ? '插件切换需重启 Cursor。' : '技能在下一次对话生效。');
     list.replaceChildren();
-    addLibrarySection(list, '插件', library.plugins || [], query);
-    addLibrarySection(list, '技能', library.skills || [], query);
+    if (libraryKind === 'plugins') addLibrarySection(list, '插件', library.plugins || [], query);
+    else addLibrarySection(list, '技能', library.skills || [], query);
   }
 
   function addLibrarySection(root, title, items, query) {
@@ -159,11 +299,9 @@
   }
 
   function renderUsage(usage) {
-    const plan = document.getElementById('usage-plan');
     const meta = document.getElementById('usage-meta');
     setUsageBar('grok', usage?.grok);
     setUsageBar('other', usage?.other);
-    plan.textContent = usage?.plan || (usage?.unlimited ? '无限额度' : '');
     if (!usage) {
       meta.textContent = '正在读取额度…';
       return;
@@ -173,6 +311,8 @@
       return;
     }
     const parts = [];
+    const plan = usage.plan || (usage.unlimited ? '无限额度' : '');
+    if (plan) parts.push(plan);
     if (usage.last) {
       const cost = usage.last.cents == null ? '金额未知' : money(usage.last.cents);
       parts.push(`上次 ${usage.last.model || '模型'} · ${cost} · ${tokenText(usage.last)}`);
@@ -185,6 +325,25 @@
     meta.title = meta.textContent;
   }
 
+  function renderToken() {
+    const fill = document.getElementById('token-fill');
+    const label = document.getElementById('token-label');
+    if (fill.dataset.lock === '1') return;
+    const text = [...log.querySelectorAll('.msg')].map((node) => node.textContent).join('');
+    const used = Math.ceil(text.length / 1.5);
+    renderTokenBar(used, 256000);
+  }
+
+  function renderTokenBar(used, limit) {
+    const fill = document.getElementById('token-fill');
+    const label = document.getElementById('token-label');
+    const cap = Number(limit) > 0 ? Number(limit) : 256000;
+    const n = Math.max(0, Number(used) || 0);
+    fill.style.transform = `scaleX(${Math.max(0, Math.min(1, n / cap))})`;
+    label.textContent = `${formatK(n)} / ${formatK(cap).replace(/\.0$/, '') === '256k' ? '256k' : formatK(cap)}`;
+    if (cap === 256000) label.textContent = `${formatK(n)} / 256k`;
+  }
+
   function setUsageBar(name, value) {
     const fill = document.getElementById(`usage-${name}`);
     const text = document.getElementById(`usage-${name}-text`);
@@ -193,21 +352,6 @@
     fill.classList.toggle('warn', number != null && number >= 70 && number < 90);
     fill.classList.toggle('hot', number != null && number >= 90);
     text.textContent = number == null ? '—' : `${Math.round(number)}%`;
-  }
-
-  async function refreshUsage() {
-    const button = document.getElementById('refresh-usage');
-    button.disabled = true;
-    button.textContent = '刷新中';
-    try {
-      const state = await getJson('/api/refresh');
-      renderUsage(state.usage || state);
-    } catch (error) {
-      document.getElementById('usage-meta').textContent = error.message || '刷新失败';
-    } finally {
-      button.disabled = false;
-      button.textContent = '刷新';
-    }
   }
 
   function setKey(id, value) {
@@ -227,7 +371,7 @@
       modelSelect.hidden = true;
       return;
     }
-    modelSelect.hidden = false;
+    modelSelect.hidden = true;
     for (const model of models) {
       const option = document.createElement('option');
       option.value = model.id;
@@ -252,11 +396,13 @@
     if (!messages.length) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = '可以直接问，也可以先截图或丢进文件。';
+      empty.textContent = '这是 Cursor 里的对话。选左侧列表继续，或点 + 开一个工作台会话。';
       log.append(empty);
+      renderToken();
       return;
     }
     for (const message of messages) appendMessage(message.role, message.text);
+    renderToken();
     stick();
   }
 
@@ -276,6 +422,7 @@
     node.append(body);
     log.append(node);
     stick();
+    renderToken();
     return body;
   }
 
@@ -453,17 +600,28 @@
     });
   }
 
-  function tokenText(last) {
-    const values = [last.inputTokens, last.outputTokens, last.cacheReadTokens, last.cacheWriteTokens]
+  function tokenCount(last) {
+    if (!last) return 0;
+    return [last.inputTokens, last.outputTokens, last.cacheReadTokens, last.cacheWriteTokens]
       .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    if (!values.length) return 'token 未知';
-    const total = values.reduce((sum, value) => sum + value, 0);
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .reduce((sum, value) => sum + value, 0);
+  }
+
+  function tokenText(last) {
+    const total = tokenCount(last);
+    if (!total) return 'token 未知';
     if (total >= 10000) {
       const wan = total / 10000;
       return `${wan >= 10 ? Math.round(wan) : wan.toFixed(1)}万 token`;
     }
     return `${Math.round(total)} token`;
+  }
+
+  function formatK(value) {
+    const n = Math.max(0, Math.round(Number(value) || 0));
+    if (n >= 10000) return `${(n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, '')}k`;
+    return String(n);
   }
 
   function money(cents) {

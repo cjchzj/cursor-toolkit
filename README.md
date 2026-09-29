@@ -34,7 +34,7 @@ npm run install:companion
 npm run uninstall:companion
 ```
 
-扩展装好后，从活动栏打开「工作台」，或在命令面板搜索「工作台」。
+扩展装好后，用托盘或状态栏「工作台」、`Alt+8` 打开悬浮窗。命令面板也可搜索「工作台」。
 
 ## 快捷键
 

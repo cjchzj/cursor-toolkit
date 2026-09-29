@@ -8,6 +8,7 @@ class Host {
     this.storageDir = storageDir;
     this.onLine = onLine;
     this.child = null;
+    this.windowWait = null;
     this.exe = path.join(storageDir, 'CursorToolkitHost.exe');
     this.source = path.join(extensionPath, 'native', 'Host.cs');
     this.shots = path.join(storageDir, 'shots');
@@ -29,6 +30,7 @@ class Host {
     });
     const dispatch = (message) => {
       if (message.type === 'ready') markReady();
+      if (message.type === 'window' && this.windowWait) this.windowWait(message);
       this.onLine(message);
     };
     this.child = spawn(this.exe, ['--serve', `--out-dir=${this.shots}`], {
@@ -78,6 +80,23 @@ class Host {
 
   toggleExternal(url) {
     this.send(`TOGGLE ${url}`);
+  }
+
+  windowOp(action) {
+    return new Promise((resolve) => {
+      const done = (payload) => {
+        if (this.windowWait !== done) return;
+        this.windowWait = null;
+        resolve(payload || { ok: true });
+      };
+      this.windowWait = done;
+      if (!this.send(`WINDOW ${String(action || '').trim()}`)) {
+        this.windowWait = null;
+        resolve({ ok: false, error: '窗口组件未运行' });
+        return;
+      }
+      setTimeout(() => done({ ok: true }), 400);
+    });
   }
 
   capture(mode) {

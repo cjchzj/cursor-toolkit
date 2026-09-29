@@ -98,6 +98,21 @@ function startServer({ token, mediaDir, api }) {
       sendJson(res, 200, { ok: true });
       return;
     }
+    if (req.method === 'POST' && url.pathname === '/api/window') {
+      const body = await readJson(req);
+      const result = await api.window(String(body.action || ''));
+      sendJson(res, 200, result || { ok: true });
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/chats') {
+      try {
+        const result = api.chats(await readJson(req));
+        sendJson(res, 200, result);
+      } catch (error) {
+        sendJson(res, 400, { error: error.message || '对话切换失败' });
+      }
+      return;
+    }
     if (req.method === 'POST' && url.pathname === '/api/shot') {
       const body = await readJson(req);
       const result = await api.shot(body.mode === 'scroll' ? 'scroll' : 'region');
@@ -135,6 +150,18 @@ function startServer({ token, mediaDir, api }) {
       } catch (error) {
         sendJson(res, 400, { error: error.message || '快捷键没保存' });
       }
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/api/job') {
+      sendJson(res, 200, api.takeJob() || { id: null });
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/job/delta') {
+      sendJson(res, 200, api.jobDelta(await readJson(req)));
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/job/done') {
+      sendJson(res, 200, api.jobDone(await readJson(req)));
       return;
     }
     if (req.method === 'POST' && url.pathname === '/api/chat') {

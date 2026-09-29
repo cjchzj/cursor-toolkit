@@ -33,6 +33,7 @@ namespace CursorToolkit
         static OverlayForm captureUi;
         static readonly List<int> hotkeyIds = new List<int>();
         static Process edgeProcess;
+        static IntPtr edgeHwnd;
 
         [STAThread]
         static void Main(string[] args)
@@ -145,6 +146,11 @@ namespace CursorToolkit
             if (line.StartsWith("TOGGLE "))
             {
                 ToggleEdge(line.Substring(7).Trim());
+                return;
+            }
+            if (line.StartsWith("WINDOW "))
+            {
+                WindowOp(line.Substring(7).Trim());
             }
         }
 
@@ -206,7 +212,7 @@ namespace CursorToolkit
             Directory.CreateDirectory(profile);
             ProcessStartInfo info = new ProcessStartInfo();
             info.FileName = edge;
-            info.Arguments = "--app=" + url + " --new-window --window-size=400,640 --user-data-dir=\"" + profile + "\"";
+            info.Arguments = "--app=" + url + " --new-window --window-size=400,680 --no-first-run --no-default-browser-check --user-data-dir=\"" + profile + "\"";
             info.UseShellExecute = false;
             edgeProcess = Process.Start(info);
             ThreadPool.QueueUserWorkItem(delegate
@@ -229,8 +235,14 @@ namespace CursorToolkit
                 }
                 try
                 {
-                    IntPtr handle = proc.MainWindowHandle;
-                    if (handle != IntPtr.Zero) SetWindowPos(handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040);
+                    int pid = proc.Id;
+                    for (int k = 0; k < 24; k++)
+                    {
+                        StyleEdgeWindows(pid);
+                        Thread.Sleep(k < 10 ? 120 : 250);
+                        proc.Refresh();
+                        if (proc.HasExited) return;
+                    }
                 }
                 catch { }
                 Emit("{\"type\":\"external\",\"open\":true}");
@@ -241,12 +253,103 @@ namespace CursorToolkit
         {
             Process proc = edgeProcess;
             edgeProcess = null;
+            edgeHwnd = IntPtr.Zero;
             if (proc == null) return;
             try
             {
                 if (!proc.HasExited) proc.Kill();
             }
             catch { }
+        }
+
+        static IntPtr EdgeWindow()
+        {
+            Process proc = edgeProcess;
+            if (proc == null) return IntPtr.Zero;
+            try
+            {
+                proc.Refresh();
+                if (proc.HasExited) return IntPtr.Zero;
+                if (proc.MainWindowHandle != IntPtr.Zero) edgeHwnd = proc.MainWindowHandle;
+            }
+            catch
+            {
+                return IntPtr.Zero;
+            }
+            return edgeHwnd;
+        }
+
+        static int styleTargetPid;
+        static readonly EnumWindowsProc StyleEdgeCallback = StyleEdgeWindow;
+
+        static void StyleEdgeWindows(int pid)
+        {
+            styleTargetPid = pid;
+            EnumWindows(StyleEdgeCallback, IntPtr.Zero);
+        }
+
+        static bool StyleEdgeWindow(IntPtr hwnd, IntPtr extra)
+        {
+            uint windowPid;
+            GetWindowThreadProcessId(hwnd, out windowPid);
+            if ((int)windowPid != styleTargetPid || !IsWindowVisible(hwnd)) return true;
+            edgeHwnd = hwnd;
+            SetWindowText(hwnd, "\u5de5\u4f5c\u53f0");
+            StyleChrome(hwnd);
+            return true;
+        }
+
+        static void StyleChrome(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return;
+            SetWindowText(hwnd, "\u5de5\u4f5c\u53f0");
+            int dark = 1;
+            DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int));
+            int chrome = 0x00141414;
+            DwmSetWindowAttribute(hwnd, 34, ref chrome, sizeof(int));
+            DwmSetWindowAttribute(hwnd, 35, ref chrome, sizeof(int));
+            int ink = 0x00F0F0F0;
+            DwmSetWindowAttribute(hwnd, 36, ref ink, sizeof(int));
+            int ex = GetWindowLong(hwnd, -20);
+            ex &= ~(0x00000100 | 0x00000200 | 0x00000001);
+            SetWindowLong(hwnd, -20, ex);
+            SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0020 | 0x0040);
+        }
+
+        static void WindowOp(string action)
+        {
+            IntPtr hwnd = EdgeWindow();
+            if (hwnd == IntPtr.Zero && action != "close")
+            {
+                Emit("{\"type\":\"window\",\"ok\":false,\"error\":" + Quote("\u6ca1\u6709\u6253\u5f00\u7684\u5de5\u4f5c\u53f0") + "}");
+                return;
+            }
+            bool maximized = false;
+            if (action == "min") ShowWindow(hwnd, 6);
+            else if (action == "max")
+            {
+                if (IsZoomed(hwnd)) ShowWindow(hwnd, 9);
+                else ShowWindow(hwnd, 3);
+            }
+            else if (action == "close")
+            {
+                CloseEdge();
+                Emit("{\"type\":\"external\",\"open\":false}");
+                Emit("{\"type\":\"window\",\"ok\":true,\"action\":\"close\",\"maximized\":false}");
+                return;
+            }
+            else if (action == "drag")
+            {
+                ReleaseCapture();
+                SendMessage(hwnd, 0x00A1, new IntPtr(2), IntPtr.Zero);
+            }
+            else
+            {
+                Emit("{\"type\":\"window\",\"ok\":false,\"error\":" + Quote("\u672a\u77e5\u7a97\u53e3\u64cd\u4f5c") + "}");
+                return;
+            }
+            try { maximized = hwnd != IntPtr.Zero && IsZoomed(hwnd); } catch { }
+            Emit("{\"type\":\"window\",\"ok\":true,\"action\":" + Quote(action) + ",\"maximized\":" + (maximized ? "true" : "false") + "}");
         }
 
         static string FindEdge()
@@ -702,6 +805,67 @@ namespace CursorToolkit
             return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", " ") + "\"";
         }
 
+        static Cursor sightCursor;
+
+        static Cursor SightCursor()
+        {
+            if (sightCursor != null) return sightCursor;
+            const int size = 32;
+            const int hot = 15;
+            const int arm = 12;
+            const int gap = 3;
+            Bitmap color = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(color))
+            {
+                g.Clear(Color.Transparent);
+                g.SmoothingMode = SmoothingMode.None;
+                g.PixelOffsetMode = PixelOffsetMode.None;
+                using (Pen outer = new Pen(Color.White, 3f))
+                using (Pen inner = new Pen(Color.Black, 1f))
+                {
+                    outer.StartCap = LineCap.Square;
+                    outer.EndCap = LineCap.Square;
+                    inner.StartCap = LineCap.Square;
+                    inner.EndCap = LineCap.Square;
+                    DrawCross(g, outer, hot, arm, gap);
+                    DrawCross(g, inner, hot, arm, gap);
+                }
+            }
+            Bitmap mask = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(mask))
+            {
+                g.Clear(Color.White);
+                for (int y = 0; y < size; y++)
+                {
+                    for (int x = 0; x < size; x++)
+                    {
+                        if (color.GetPixel(x, y).A > 0) mask.SetPixel(x, y, Color.Black);
+                    }
+                }
+            }
+            IconInfo info = new IconInfo();
+            info.fIcon = 0;
+            info.xHotspot = hot;
+            info.yHotspot = hot;
+            info.hbmMask = mask.GetHbitmap();
+            info.hbmColor = color.GetHbitmap();
+            IntPtr handle = CreateIconIndirect(ref info);
+            DeleteObject(info.hbmMask);
+            DeleteObject(info.hbmColor);
+            color.Dispose();
+            mask.Dispose();
+            sightCursor = handle == IntPtr.Zero ? Cursors.Cross : new Cursor(handle);
+            return sightCursor;
+        }
+
+        static void DrawCross(Graphics g, Pen pen, int center, int arm, int gap)
+        {
+            g.DrawLine(pen, center - arm, center, center - gap, center);
+            g.DrawLine(pen, center + gap, center, center + arm, center);
+            g.DrawLine(pen, center, center - arm, center, center - gap);
+            g.DrawLine(pen, center, center + gap, center, center + arm);
+        }
+
         static void RestoreCursor()
         {
             Cursor.Current = Cursors.Default;
@@ -734,8 +898,29 @@ namespace CursorToolkit
         static extern short GetKeyState(int vk);
         [DllImport("user32.dll")]
         static extern bool ShowWindow(IntPtr hwnd, int cmd);
+        delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr extra);
+        [DllImport("user32.dll")]
+        static extern bool EnumWindows(EnumWindowsProc proc, IntPtr extra);
+        [DllImport("user32.dll")]
+        static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+        [DllImport("user32.dll")]
+        static extern bool IsWindowVisible(IntPtr hwnd);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern bool SetWindowText(IntPtr hwnd, string text);
+        [DllImport("dwmapi.dll")]
+        static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
         [DllImport("user32.dll")]
         static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        [DllImport("user32.dll")]
+        static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll")]
+        static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [DllImport("user32.dll")]
+        static extern bool IsZoomed(IntPtr hWnd);
+        [DllImport("user32.dll")]
+        static extern bool ReleaseCapture();
+        [DllImport("user32.dll")]
+        static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         [DllImport("user32.dll")]
         static extern bool SetCursorPos(int x, int y);
         [DllImport("user32.dll")]
@@ -759,6 +944,18 @@ namespace CursorToolkit
         static extern IntPtr LoadCursor(IntPtr instance, int cursor);
         [DllImport("user32.dll")]
         static extern IntPtr SetCursor(IntPtr cursor);
+        [DllImport("user32.dll")]
+        static extern IntPtr CreateIconIndirect(ref IconInfo info);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct IconInfo
+        {
+            public int fIcon;
+            public int xHotspot;
+            public int yHotspot;
+            public IntPtr hbmMask;
+            public IntPtr hbmColor;
+        }
         [DllImport("user32.dll")]
         static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint colorKey, byte alpha, uint flags);
         [DllImport("user32.dll", SetLastError = true)]
@@ -947,7 +1144,7 @@ namespace CursorToolkit
                 StartPosition = FormStartPosition.Manual;
                 Bounds = SystemInformation.VirtualScreen;
                 BackColor = Color.Black;
-                Cursor = Cursors.Cross;
+                Cursor = Program.SightCursor();
                 KeyPreview = true;
                 SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
 
@@ -993,7 +1190,7 @@ namespace CursorToolkit
             protected override void OnShown(EventArgs e)
             {
                 base.OnShown(e);
-                Cursor = Cursors.Cross;
+                Cursor = Program.SightCursor();
                 Program.ShowWindow(Handle, 5);
                 PresentSmoke();
                 chrome.Show();
@@ -1264,7 +1461,7 @@ namespace CursorToolkit
                 else if (mode == NorthEast || mode == SouthWest) Cursor = Cursors.SizeNESW;
                 else if (mode == North || mode == South) Cursor = Cursors.SizeNS;
                 else if (mode == East || mode == West) Cursor = Cursors.SizeWE;
-                else Cursor = Cursors.Cross;
+                else Cursor = Program.SightCursor();
             }
 
             Rectangle ClientSelection()

@@ -1,8 +1,8 @@
 {
   "name": "cursor-toolkit",
   "displayName": "工作台",
-  "description": "在活动栏管理插件和技能，并提供额度、悬浮窗和截图。",
-  "version": "0.3.0",
+  "description": "独立托盘工作台：截图、额度、插件技能，以及悬浮窗对话。",
+  "version": "0.3.6",
   "publisher": "ming",
   "license": "MIT",
   "repository": {
@@ -27,8 +27,7 @@
   "extensionKind": ["ui"],
   "categories": ["Other"],
   "activationEvents": [
-    "onStartupFinished",
-    "onView:cursorToolkit.panel"
+    "onStartupFinished"
   ],
   "main": "./extension-lite.js",
   "contributes": {
@@ -51,8 +50,7 @@
       },
       {
         "command": "cursorToolkit.openPanel",
-        "title": "工作台: 打开面板",
-        "icon": "$(tools)"
+        "title": "工作台: 打开悬浮窗"
       },
       {
         "command": "cursorToolkit.openShortcuts",
@@ -64,25 +62,6 @@
         {
           "command": "cursorToolkit.captureScroll",
           "when": "false"
-        }
-      ]
-    },
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "cursorToolkit",
-          "title": "工作台",
-          "icon": "media/toolkit.svg"
-        }
-      ]
-    },
-    "views": {
-      "cursorToolkit": [
-        {
-          "id": "cursorToolkit.panel",
-          "name": "工作台",
-          "type": "webview",
-          "contextualTitle": "工作台"
         }
       ]
     }

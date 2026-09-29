@@ -1,20 +1,23 @@
 const vscode = require('vscode');
 const { ensureCompanion, readRuntime, request } = require('./installer');
+const { sendChat } = require('./chat');
 
 let runtime = null;
 let status = null;
 let output = null;
+let pumping = false;
 
 async function activate(context) {
   output = vscode.window.createOutputChannel('工作台');
   context.subscriptions.push(output);
-  const panel = new ToolkitViewProvider();
-  context.subscriptions.push(vscode.window.registerWebviewViewProvider('cursorToolkit.panel', panel));
 
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 10000);
+  status.name = '工作台';
+  status.backgroundColor = new vscode.ThemeColor('statusBarItem.remoteBackground');
+  status.color = new vscode.ThemeColor('statusBarItem.remoteForeground');
   status.text = '$(tools) 工作台';
-  status.tooltip = '打开工作台';
-  status.command = 'cursorToolkit.openPanel';
+  status.tooltip = '打开工作台悬浮窗';
+  status.command = 'cursorToolkit.toggleFloat';
   status.show();
   context.subscriptions.push(status);
 
@@ -26,28 +29,25 @@ async function activate(context) {
       await call('GET', '/api/refresh');
       await updateStatus();
     }),
-    vscode.commands.registerCommand('cursorToolkit.openPanel', async () => {
-      await vscode.commands.executeCommand('workbench.view.extension.cursorToolkit');
-      await vscode.commands.executeCommand('cursorToolkit.panel.focus');
-    }),
-    vscode.commands.registerCommand('cursorToolkit.openShortcuts', async () => {
-      await vscode.commands.executeCommand('cursorToolkit.openPanel');
-    }),
+    vscode.commands.registerCommand('cursorToolkit.openPanel', () => call('POST', '/api/pin', {})),
+    vscode.commands.registerCommand('cursorToolkit.openShortcuts', () => call('POST', '/api/pin', {})),
   );
 
   try {
     runtime = await ensureCompanion(context.extensionPath, context.extension.packageJSON.version, (line) => output.appendLine(line));
-    panel.connect(urlFor('/float?panel=1'));
     await updateStatus();
   } catch (error) {
     output.appendLine(error.stack || error.message || String(error));
+    status.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
     status.text = '$(warning) 工作台未启动';
     status.tooltip = error.message || String(error);
     vscode.window.showErrorMessage(`工作台启动失败：${error.message || error}`);
   }
 
-  const timer = setInterval(updateStatus, 45000);
-  context.subscriptions.push({ dispose: () => clearInterval(timer) });
+  const usageTimer = setInterval(updateStatus, 45000);
+  const jobTimer = setInterval(() => pumpJob().catch((error) => output?.appendLine(error.message || String(error))), 700);
+  context.subscriptions.push({ dispose: () => clearInterval(usageTimer) });
+  context.subscriptions.push({ dispose: () => clearInterval(jobTimer) });
 }
 
 async function call(method, pathname, body) {
@@ -58,68 +58,51 @@ async function call(method, pathname, body) {
   return result.body;
 }
 
+async function pumpJob() {
+  if (pumping) return;
+  pumping = true;
+  try {
+    const job = await call('GET', '/api/job');
+    if (!job?.id) return;
+    const result = await sendChat(vscode, {
+      modelId: job.modelId,
+      prompt: job.prompt,
+      history: job.history || [],
+      images: [],
+      onDelta: (delta) => call('POST', '/api/job/delta', { id: job.id, delta }).catch(() => {}),
+    });
+    if (!result.ok) {
+      await call('POST', '/api/job/done', { id: job.id, error: result.reason === 'no-model' ? 'Cursor 当前没有可用模型' : '对话失败' });
+      return;
+    }
+    await call('POST', '/api/job/done', { id: job.id, text: result.text, model: result.model });
+  } catch (error) {
+    output?.appendLine(`转接对话失败：${error.message || error}`);
+  } finally {
+    pumping = false;
+  }
+}
+
 async function updateStatus() {
   try {
     const state = await call('GET', '/api/state?since=-1');
     const usage = state.usage;
+    status.backgroundColor = new vscode.ThemeColor('statusBarItem.remoteBackground');
+    status.color = new vscode.ThemeColor('statusBarItem.remoteForeground');
     if (!usage || !usage.ok) {
       status.text = '$(tools) 工作台';
       status.tooltip = usage?.error || '额度正在读取';
       return;
     }
-    status.text = `Grok ${percent(usage.grok)} · 其他 ${percent(usage.other)}`;
-    status.tooltip = '点击打开工作台';
+    status.text = `$(tools) 工作台  Grok ${percent(usage.grok)}  其他 ${percent(usage.other)}`;
+    status.tooltip = '点击打开工作台悬浮窗';
   } catch (error) {
     output?.appendLine(`状态读取失败：${error.message || error}`);
   }
 }
 
-function urlFor(pathname) {
-  const url = new URL(`http://127.0.0.1:${runtime.port}${pathname}`);
-  url.searchParams.set('token', runtime.token);
-  return url.toString();
-}
-
 function percent(value) {
   return value == null ? '—' : `${Math.round(Number(value))}%`;
-}
-
-class ToolkitViewProvider {
-  constructor() {
-    this.view = null;
-    this.url = '';
-  }
-
-  resolveWebviewView(view) {
-    this.view = view;
-    view.webview.options = { enableScripts: true };
-    this.render();
-  }
-
-  connect(url) {
-    this.url = url;
-    this.render();
-  }
-
-  render() {
-    if (!this.view) return;
-    if (!this.url) {
-      this.view.webview.html = '<!doctype html><html><body style="font:13px sans-serif;color:#aaa;padding:16px">工作台正在启动…</body></html>';
-      return;
-    }
-    this.view.webview.html = `<!doctype html>
-<html><head>
-<meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src http://127.0.0.1:*; style-src 'unsafe-inline';">
-<style>html,body,iframe{width:100%;height:100%;margin:0;border:0;overflow:hidden}body{background:var(--vscode-sideBar-background)}</style>
-</head><body><iframe src="${escapeHtml(this.url)}" title="工作台"></iframe></body></html>`;
-  }
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[char]));
 }
 
 function deactivate() {
