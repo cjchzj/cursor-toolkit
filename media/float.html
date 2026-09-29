@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; connect-src 'self';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>工作台</title>
+  <link rel="icon" href="/toolkit.ico?token=__TOKEN__" sizes="256x256" />
+  <link rel="stylesheet" href="/float.css?token=__TOKEN__" />
+</head>
+<body>
+  <header id="bar">
+    <strong>工作台</strong>
+    <span class="spacer"></span>
+    <button id="refresh-usage" type="button" title="刷新额度">刷新</button>
+    <button id="pin" type="button" title="在其他窗口之上打开">置顶</button>
+    <button id="close" type="button" title="关闭">关闭</button>
+  </header>
+  <section id="usage" aria-label="模型额度">
+    <div class="usage-title">
+      <strong>本期额度</strong>
+      <span id="usage-plan" class="muted"></span>
+    </div>
+    <div class="usage-row">
+      <span>Grok / Composer</span>
+      <div class="usage-track"><i id="usage-grok"></i></div>
+      <b id="usage-grok-text">—</b>
+    </div>
+    <div class="usage-row">
+      <span>其他模型</span>
+      <div class="usage-track"><i id="usage-other"></i></div>
+      <b id="usage-other-text">—</b>
+    </div>
+    <div id="usage-meta" class="usage-meta">正在读取额度…</div>
+  </section>
+  <details id="library">
+    <summary>插件和技能</summary>
+    <input id="library-search" type="search" placeholder="搜索插件或技能" />
+    <div id="library-note" class="hint"></div>
+    <div id="library-list"></div>
+  </details>
+  <div id="log"></div>
+  <div id="pending"></div>
+  <form id="composer">
+    <textarea id="input" rows="2" placeholder="问点什么，Enter 发送"></textarea>
+    <div class="tools">
+      <button type="button" id="shot" class="ghost">截图</button>
+      <button type="button" id="file" class="ghost">文件</button>
+      <select id="model" hidden></select>
+      <span class="spacer"></span>
+      <button type="button" id="stop" class="ghost" hidden>停止</button>
+      <button type="submit" id="send">发送</button>
+    </div>
+  </form>
+  <details id="keys">
+    <summary>快捷键</summary>
+    <label>截图<input id="key-region" spellcheck="false" autocomplete="off" /></label>
+    <label>悬浮窗<input id="key-float" spellcheck="false" autocomplete="off" /></label>
+    <button type="button" id="save-keys">保存快捷键</button>
+    <p class="hint">截图快捷键是 Alt+9。选区完成后，可复制、保存，或滚动截取长图。全局快捷键至少带一个修饰键，例如 ctrl+alt+a。</p>
+  </details>
+  <input id="picker" type="file" multiple hidden />
+  <script src="/float.js?token=__TOKEN__"></script>
+</body>
+</html>

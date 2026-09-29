@@ -1,0 +1,90 @@
+{
+  "name": "cursor-toolkit",
+  "displayName": "工作台",
+  "description": "在活动栏管理插件和技能，并提供额度、悬浮窗和截图。",
+  "version": "0.3.0",
+  "publisher": "ming",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cjchzj/cursor-toolkit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cjchzj/cursor-toolkit/issues"
+  },
+  "homepage": "https://github.com/cjchzj/cursor-toolkit#readme",
+  "scripts": {
+    "package": "vsce package --no-dependencies",
+    "install:companion": "node scripts/install-companion.js",
+    "uninstall:companion": "node scripts/uninstall-companion.js"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.2"
+  },
+  "engines": {
+    "vscode": "^1.128.0"
+  },
+  "extensionKind": ["ui"],
+  "categories": ["Other"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:cursorToolkit.panel"
+  ],
+  "main": "./extension-lite.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "cursorToolkit.captureRegion",
+        "title": "工作台: 截图"
+      },
+      {
+        "command": "cursorToolkit.captureScroll",
+        "title": "工作台: 截图"
+      },
+      {
+        "command": "cursorToolkit.toggleFloat",
+        "title": "工作台: 开关悬浮窗"
+      },
+      {
+        "command": "cursorToolkit.refreshUsage",
+        "title": "工作台: 刷新额度"
+      },
+      {
+        "command": "cursorToolkit.openPanel",
+        "title": "工作台: 打开面板",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "cursorToolkit.openShortcuts",
+        "title": "工作台: 打开快捷键设置"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "cursorToolkit.captureScroll",
+          "when": "false"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cursorToolkit",
+          "title": "工作台",
+          "icon": "media/toolkit.svg"
+        }
+      ]
+    },
+    "views": {
+      "cursorToolkit": [
+        {
+          "id": "cursorToolkit.panel",
+          "name": "工作台",
+          "type": "webview",
+          "contextualTitle": "工作台"
+        }
+      ]
+    }
+  }
+}

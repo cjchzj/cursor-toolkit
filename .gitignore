@@ -1,0 +1,10 @@
+node_modules/
+*.vsix
+*.exe
+*.pdb
+*.tmp
+*.log
+runtime.json
+.DS_Store
+Thumbs.db
+.repair-backup-built-in/
